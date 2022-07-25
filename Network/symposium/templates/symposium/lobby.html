@@ -1,0 +1,307 @@
+{% extends 'base.html' %} {% load static %} 
+{% block title %} Lobby - {% endblock %} {% block content%} 
+{% include 'navbar.html' %}
+<script defer src="{% static 'three.min.js' %}"></script>
+<script defer src="{% static 'OrbitControls.js' %}"></script>
+<script defer src="{% static 'GLTFLoader.js' %}"></script>
+<script defer src="{% static 'Capsule.js' %}"></script>
+<script defer src="{% static 'Octree.js' %}"></script>
+<div class="fixed left-0 top-0 -z-10" id="lobby"></div>
+<script defer type="module">
+  let data = []
+  // console.log(Banners)
+  {% for Banner in Banners %}
+    data.push({
+    name : "{{Banner.name}}",
+    path : "{{Banner.path}}",
+    url : "{{Banner.url}}",
+    position : [parseFloat("{{Banner.position_x}}") , parseFloat("{{Banner.position_y}}") , parseFloat("{{Banner.position_z}}")],
+    rotation: -parseFloat("{{Banner.rotation}}"),
+    height : "{{Banner.height}}",
+    width : "{{Banner.width}}"
+    })
+  {% endfor %}
+  console.log(data);
+
+  const clock = new THREE.Clock();
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x88ccee);
+  
+
+  const camera = new THREE.PerspectiveCamera(
+    70,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
+  camera.rotation.order = 'YXZ';
+
+  const fillLight1 = new THREE.HemisphereLight(0x4488bb, 0x002244, 0.5);
+  fillLight1.position.set(2, 1, 1);
+  scene.add(fillLight1);
+
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(-5, 25, -1);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.camera.near = 0.01;
+  directionalLight.shadow.camera.far = 500;
+  directionalLight.shadow.camera.right = 30;
+  directionalLight.shadow.camera.left = -30;
+  directionalLight.shadow.camera.top = 30;
+  directionalLight.shadow.camera.bottom = -30;
+  directionalLight.shadow.mapSize.width = 1024;
+  directionalLight.shadow.mapSize.height = 1024;
+  directionalLight.shadow.radius = 4;
+  directionalLight.shadow.bias = -0.00006;
+  scene.add(directionalLight);
+
+  const container = document.getElementById('lobby');
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.VSMShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  container.appendChild(renderer.domElement);
+
+ 
+
+  const GRAVITY = 30;
+
+  const STEPS_PER_FRAME = 5;
+
+  const worldOctree = new THREE.Octree();
+
+  const playerCollider = new THREE.Capsule(
+    new THREE.Vector3(0, 0.35, 0),
+    new THREE.Vector3(0, 1, 0),
+    0.35
+  );
+
+  const playerVelocity = new THREE.Vector3();
+  const playerDirection = new THREE.Vector3();
+
+  let playerOnFloor = false;
+  let mouseTime = 0;
+
+  const keyStates = {};
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+
+  document.addEventListener('keydown', (event) => {
+    keyStates[event.code] = true;
+  });
+
+  document.addEventListener('keyup', (event) => {
+    keyStates[event.code] = false;
+  });
+
+  let mousedown = false;
+
+  container.addEventListener('mousedown', () => {
+    mousedown = true;
+  });
+
+  document.addEventListener('mouseup', () => {
+    mousedown = false;
+  });
+
+  document.body.addEventListener('mousemove', (event) => {
+    if (mousedown) {
+      camera.rotation.y -= event.movementX / 200;
+      camera.rotation.x -= event.movementY / 500;
+    }
+  });
+
+  window.addEventListener('resize', onWindowResize);
+
+  function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  function playerCollisions() {
+    const result = worldOctree.capsuleIntersect(playerCollider);
+
+    playerOnFloor = false;
+
+    if (result) {
+      playerOnFloor = result.normal.y > 0;
+
+      if (!playerOnFloor) {
+        playerVelocity.addScaledVector(
+          result.normal,
+          -result.normal.dot(playerVelocity)
+        );
+      }
+
+      playerCollider.translate(result.normal.multiplyScalar(result.depth));
+    }
+  }
+
+  function updatePlayer(deltaTime) {
+    let damping = Math.exp(-4 * deltaTime) - 1;
+
+    if (!playerOnFloor) {
+      playerVelocity.y -= GRAVITY * deltaTime;
+
+      // small air resistance
+      damping *= 0.1;
+    }
+
+    playerVelocity.addScaledVector(playerVelocity, damping);
+
+    const deltaPosition = playerVelocity.clone().multiplyScalar(deltaTime);
+    playerCollider.translate(deltaPosition);
+
+    playerCollisions();
+
+    camera.position.copy(playerCollider.end);
+  }
+
+  function getForwardVector() {
+    camera.getWorldDirection(playerDirection);
+    playerDirection.y = 0;
+    playerDirection.normalize();
+
+    return playerDirection;
+  }
+
+  function getSideVector() {
+    camera.getWorldDirection(playerDirection);
+    playerDirection.y = 0;
+    playerDirection.normalize();
+    playerDirection.cross(camera.up);
+
+    return playerDirection;
+  }
+
+  function controls(deltaTime) {
+    // gives a bit of air control
+    const speedDelta = deltaTime * (playerOnFloor ? 25 : 8);
+
+    if (keyStates['KeyW']) {
+      playerVelocity.add(getForwardVector().multiplyScalar(speedDelta));
+    }
+
+    if (keyStates['KeyS']) {
+      playerVelocity.add(getForwardVector().multiplyScalar(-speedDelta));
+    }
+
+    if (keyStates['KeyA']) {
+      playerVelocity.add(getSideVector().multiplyScalar(-speedDelta));
+    }
+
+    if (keyStates['KeyD']) {
+      playerVelocity.add(getSideVector().multiplyScalar(speedDelta));
+    }
+
+    if (playerOnFloor) {
+      if (keyStates['Space']) {
+        playerVelocity.y = 15;
+      }
+    }
+  }
+
+  const loader = new THREE.GLTFLoader();
+
+  loader.load("{% static 'symposium/lobby_images&model/collision-world.glb' %}", (gltf) => {
+    gltf.scene.scale.set(1, 1, 1);
+
+    scene.add(gltf.scene);
+    console.log(gltf.scene);
+    worldOctree.fromGraphNode(gltf.scene);
+
+    gltf.scene.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        if (child.material.map) {
+          child.material.map.anisotropy = 4;
+        }
+      }
+    });
+    animate();
+  });
+
+  // Loader
+  const textureLoader = new THREE.TextureLoader();
+  const objects = [];
+  for (let index in data) {
+    const eyrcImageTexture = textureLoader.load(data[index].path);
+    const eyrcImagePlane = new THREE.Mesh(
+      new THREE.PlaneBufferGeometry(data[index].height, data[index].height),
+      new THREE.MeshStandardMaterial({
+        map: eyrcImageTexture,
+        side: THREE.DoubleSide,
+      })
+    );
+
+    eyrcImagePlane.name = data[index].name;
+    console.log(data[index].position);
+    eyrcImagePlane.position.set(
+      data[index].position[0],
+      data[index].position[1],
+      data[index].position[2]
+    );
+    eyrcImagePlane.rotation.y = data[index].rotation;
+    scene.add(eyrcImagePlane);
+    objects.push(eyrcImagePlane);
+  }
+
+  // Raycaster
+
+  window.addEventListener('pointermove', (event) => {
+    // calculate pointer position in normalized device coordinates
+    // (-1 to +1) for both components
+    pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  });
+  window.addEventListener('click', () => {
+    mouseTime = performance.now();
+    document.addEventListener('mouseup', () => {
+      // console.log(mouseTime-performance.now())
+
+      if (mouseTime - performance.now() >= -800) {
+        const intersects = raycaster.intersectObjects(objects);
+        for (let intersect of intersects) {
+          for (let index in data) {
+            if (data[index].name == intersect.object.name) {
+              window.open(data[index].url, '_blank');
+            }
+          }
+        }
+      }
+    });
+  });
+
+  function animate() {
+    console.log(camera.position);
+
+    const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
+
+    // we look for collisions in substeps to mitigate the risk of
+    // an object traversing another too quickly for detection.
+
+    for (let i = 0; i < STEPS_PER_FRAME; i++) {
+      controls(deltaTime);
+
+      updatePlayer(deltaTime);
+
+    }
+
+    raycaster.setFromCamera(pointer, camera);
+
+    renderer.render(scene, camera);
+
+    requestAnimationFrame(animate);
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends 'base.html' %} {% load static %} {% block content%} 
+{% include 'navbar.html' %}
+<script defer="defer" src="{% static 'bundle.f224e26b4908278d86b5.js' %}"></script>
+<canvas class="webgl"></canvas>
+    <script>
+      (TEXT = '{{ event.name }}'), (TEXTURE = '{{ event.hero_image }}');
+    </script>
+</div>
+{% endblock %}

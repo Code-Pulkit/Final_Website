@@ -1,0 +1,42 @@
+{% extends 'base.html' %} {% load static %}
+{% block title %} Model - {% endblock %}
+{% block content%} {% include 'navbar.html' %}
+<script defer="defer" src="{% static 'bundle.807eadf673b20c09c2c2.js' %}"></script>
+<style>
+  .annotation {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    margin-left: 15px;
+    margin-top: 15px;
+    padding: 1em;
+    width: 250px;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: .5em;
+    font-size: 12px;
+    font-family: 'Arial', 'sans-serif';
+    line-height: 1.2;
+    transition: opacity .5s;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+</style>
+<div class="loading-bar"></div>
+<script>
+  const model_link = "/{{ Model.modellink }}",
+  points = []
+  {% for Point in Points %}
+  points.push({
+    text: "{{Point.text}}",
+    label: "{{Point.label}}",
+    position: { x: parseFloat("{{Point.position_x}}"), y: parseFloat("{{Point.position_y}}"), z: parseFloat("{{Point.position_z}}") },
+    audioLink: "/{{Point.audiolink}}",
+  })
+  {% endfor %}
+  console.log(points)
+</script>
+{% endblock %}
